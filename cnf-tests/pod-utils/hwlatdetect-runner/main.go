@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -13,6 +14,10 @@ import (
 )
 
 const hwlatdetectBinary = "/usr/bin/hwlatdetect"
+
+// targetAllCPUsEnv is the HWLATDETECT_TARGET_ALL_CPUS environment variable,
+// which cnf-tests forwards into this runner pod when invoked with it.
+const targetAllCPUsEnv = "HWLATDETECT_TARGET_ALL_CPUS"
 
 func main() {
 	klog.InitFlags(nil)
@@ -31,6 +36,12 @@ func main() {
 		klog.Fatalf("failed to print node information: %v", err)
 	}
 
+	cpus, err := node.GetSelfCPUs()
+	if err != nil {
+		klog.Fatalf("failed to get allocated CPUs: %v", err)
+	}
+	klog.Infof("CPUs assigned to the pod: %s", cpus.String())
+
 	if *hwlatdetectStartDelay > 0 {
 		time.Sleep(time.Duration(*hwlatdetectStartDelay) * time.Second)
 	}
@@ -45,6 +56,13 @@ func main() {
 		// for example 5s is valid, but 5m4s and 5 isn't
 		"--window", fmt.Sprintf("%dus", window.Microseconds()),
 		"--width", fmt.Sprintf("%dus", width.Microseconds()),
+	}
+
+	targetAllCPUs, _ := strconv.ParseBool(os.Getenv(targetAllCPUsEnv))
+	if targetAllCPUs {
+		klog.Infof("%s is set, running hwlatdetect across all online CPUs", targetAllCPUsEnv)
+	} else {
+		hwlatdetectArgs = append(hwlatdetectArgs, "--cpu-list", cpus.String())
 	}
 
 	klog.Infof("running hwlatdetect command with arguments %v", hwlatdetectArgs[1:])
